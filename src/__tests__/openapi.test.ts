@@ -7,8 +7,11 @@ import {
   generateOpenApi31Document,
   generateOpenApiDocument,
   getControllerOpenApiRoutes,
+  getHandlerOpenApiRoutes,
+  getRegisteredOpenApiRoutes,
   hasOpenApiMetadata,
   openapi,
+  registerOpenApiRoutes,
   toOpenApiPath,
   toRoutingPath,
   z,
@@ -49,6 +52,15 @@ const UpdatePermissionsRoute = createRoute({
   },
   summary: "Update User Permissions",
   tags: ["Users"],
+});
+
+const listFunctionUsers = openapi({
+  method: "get",
+  path: "/api/function-users",
+  summary: "List function users",
+  tags: ["Users"],
+})(function listFunctionUsers(limit: number) {
+  return { limit };
 });
 
 class BaseUsersController {
@@ -166,6 +178,19 @@ describe("createRoute", () => {
       "/api/users/:user_id/permissions",
     );
   });
+
+  it("derives paths from the current route value", () => {
+    const definition: { method: "get"; path: string } = {
+      method: "get",
+      path: "/before/:id",
+    };
+    const route = createRoute(definition);
+
+    route.path = "/after/:id";
+
+    expect(route.getOpenApiPath()).toBe("/after/{id}");
+    expect(route.getRoutingPath()).toBe("/after/:id");
+  });
 });
 
 describe("decorator metadata", () => {
@@ -188,6 +213,59 @@ describe("decorator metadata", () => {
       "UsersController",
     ]);
     expect(fromClass.find((route) => route.methodName === "health")?.static).toBe(true);
+  });
+
+  it("does not inherit a decorated route through an overridden member", () => {
+    class BaseController {
+      @openapi({
+        method: "get",
+        path: "/base-handler",
+      })
+      handler() {
+        return "base";
+      }
+
+      @openapi({
+        method: "get",
+        path: "/base-static-handler",
+      })
+      static staticHandler() {
+        return "base";
+      }
+    }
+
+    class OverrideController extends BaseController {
+      override handler() {
+        return "override";
+      }
+
+      static override staticHandler() {
+        return "override";
+      }
+    }
+
+    expect(getControllerOpenApiRoutes(OverrideController)).toEqual([]);
+  });
+
+  it("does not leak metadata when a handler is mounted on another controller", () => {
+    class FirstController {
+      @openapi({
+        method: "get",
+        path: "/first-handler",
+      })
+      handler() {
+        return null;
+      }
+    }
+
+    class SecondController {}
+
+    Object.defineProperty(SecondController.prototype, "handler", {
+      configurable: true,
+      value: FirstController.prototype.handler,
+    });
+
+    expect(getControllerOpenApiRoutes(SecondController)).toEqual([]);
   });
 
   it("marks decorated handlers and supports stage-3 decorator invocation", () => {
@@ -237,9 +315,76 @@ describe("decorator metadata", () => {
       },
     ]);
   });
+
+  it("wraps standalone functions without changing their behavior or signature", () => {
+    const result: { limit: number } = listFunctionUsers(25);
+
+    expect(result).toEqual({ limit: 25 });
+    expect(hasOpenApiMetadata(listFunctionUsers)).toBe(true);
+    const registrations = getHandlerOpenApiRoutes(listFunctionUsers);
+
+    expect(registrations[0]?.name).toBe(listFunctionUsers.name);
+    expect(registrations).toMatchObject([
+      {
+        handler: listFunctionUsers,
+        kind: "function",
+        route: {
+          method: "get",
+          path: "/api/function-users",
+        },
+        static: false,
+      },
+    ]);
+    expect(
+      getRegisteredOpenApiRoutes().some(
+        (registration) => registration.handler === listFunctionUsers,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("document generation", () => {
+  it("generates a document from explicit standalone handlers", () => {
+    const document = generateOpenApiDocument({
+      document: {
+        info: {
+          title: "Function API",
+          version: "1.0.0",
+        },
+        openapi: "3.0.0",
+      },
+      handlers: [listFunctionUsers],
+    });
+
+    expect(document.paths["/api/function-users"]?.get?.summary).toBe("List function users");
+  });
+
+  it("auto-discovers imported decorated methods and functions without duplicates", () => {
+    const document = generateOpenApiDocument({
+      controllers: [UsersController],
+      discovery: "auto",
+      document: {
+        info: {
+          title: "Discovered API",
+          version: "1.0.0",
+        },
+        openapi: "3.0.0",
+      },
+      handlers: [listFunctionUsers],
+    });
+
+    expect(document.paths["/api/function-users"]?.get?.summary).toBe("List function users");
+    expect(document.paths["/api/users/{user_id}"]?.get?.summary).toBe("Retrieve User");
+  });
+
+  it("rejects explicit handlers without OpenAPI metadata", () => {
+    expect(() =>
+      createOpenApiRegistry({
+        handlers: [() => null],
+      }),
+    ).toThrow("Handler anonymous has no OpenAPI metadata.");
+  });
+
   it("generates an OpenAPI 3 document from decorated controllers", () => {
     const document = generateOpenApiDocument({
       controllers: [UsersController],
@@ -349,6 +494,45 @@ describe("document generation", () => {
 
     expect(document.paths?.["/health"]?.get?.summary).toBe("Health route");
     expect(document.paths?.["/api/users/static"]?.get?.summary).toBe("Static health route");
+  });
+
+  it("rejects duplicate operations after normalizing their paths", () => {
+    expect(() =>
+      createOpenApiRegistry({
+        routes: [
+          {
+            method: "get",
+            path: "/users/:user_id",
+          },
+          {
+            method: "get",
+            path: "/users/{user_id}",
+          },
+        ],
+      }),
+    ).toThrow("Duplicate OpenAPI operation: GET /users/{user_id}");
+  });
+
+  it("rejects duplicate operations already present in a registry", () => {
+    const registry = createOpenApiRegistry({
+      routes: [
+        {
+          method: "get",
+          path: "/users/:user_id",
+        },
+      ],
+    });
+
+    expect(() =>
+      registerOpenApiRoutes(registry, {
+        routes: [
+          {
+            method: "get",
+            path: "/users/{user_id}",
+          },
+        ],
+      }),
+    ).toThrow("Duplicate OpenAPI operation: GET /users/{user_id}");
   });
 
   it("generates an OpenAPI 3.1 document", () => {

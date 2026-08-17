@@ -1,7 +1,7 @@
 import { registerDecoratedRoute } from "./metadata";
-import type { OpenApiRoute } from "./types";
+import type { OpenApiHandler, OpenApiRoute } from "./types";
 
-type DecoratedMethod = (...args: any[]) => unknown;
+type DecoratedMethod = OpenApiHandler;
 
 type LegacyMethodDecorator = <Method extends DecoratedMethod>(
   target: object,
@@ -16,6 +16,12 @@ type StandardMethodDecorator = <Method extends DecoratedMethod>(
 
 export type OpenApiMethodDecorator = LegacyMethodDecorator & StandardMethodDecorator;
 
+export type OpenApiFunctionDecorator = <Handler extends OpenApiHandler>(
+  handler: Handler,
+) => Handler;
+
+export type OpenApiDecorator = OpenApiMethodDecorator & OpenApiFunctionDecorator;
+
 function isStandardDecoratorInvocation(
   args: unknown[],
 ): args is [DecoratedMethod, ClassMethodDecoratorContext<object, DecoratedMethod>] {
@@ -29,11 +35,19 @@ function isStandardDecoratorInvocation(
 }
 
 /**
- * Attaches OpenAPI metadata to a controller method without coupling route registration
- * to the framework runtime.
+ * Attaches OpenAPI metadata to a controller method or standalone function without
+ * coupling route registration to the framework runtime.
  */
-export function openapi(route: OpenApiRoute): OpenApiMethodDecorator {
+export function openapi(route: OpenApiRoute): OpenApiDecorator {
   return ((...args: unknown[]) => {
+    if (args.length === 1 && typeof args[0] === "function") {
+      const [handler] = args as [OpenApiHandler];
+      registerDecoratedRoute(handler, handler.name || "anonymous", route, false, {
+        kind: "function",
+      });
+      return handler;
+    }
+
     if (isStandardDecoratorInvocation(args)) {
       const [value, context] = args;
 
@@ -45,7 +59,10 @@ export function openapi(route: OpenApiRoute): OpenApiMethodDecorator {
         throw new TypeError("@openapi cannot decorate private methods.");
       }
 
-      registerDecoratedRoute(value, context.name, route, Boolean(context.static));
+      registerDecoratedRoute(value, context.name, route, Boolean(context.static), {
+        kind: "method",
+        metadata: context.metadata,
+      });
       return value;
     }
 
@@ -59,7 +76,10 @@ export function openapi(route: OpenApiRoute): OpenApiMethodDecorator {
       throw new TypeError("@openapi can only decorate class methods.");
     }
 
-    registerDecoratedRoute(descriptor.value, propertyKey, route, typeof target === "function");
+    registerDecoratedRoute(descriptor.value, propertyKey, route, typeof target === "function", {
+      kind: "method",
+      owner: target,
+    });
     return descriptor;
-  }) as OpenApiMethodDecorator;
+  }) as OpenApiDecorator;
 }

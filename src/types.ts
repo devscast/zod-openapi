@@ -42,6 +42,8 @@ export type OpenApiRoute = Omit<RouteConfig, "path" | "request" | "responses"> &
 export type OpenAPIDocument = OpenAPIV3Document;
 export type OpenAPI31Document = OpenAPIV31Document;
 export type OpenAPIGeneratorOptions = ConstructorParameters<typeof OpenApiGeneratorV3>[1];
+export type OpenApiHandler = (...args: any[]) => unknown;
+export type OpenApiRegistrationKind = "function" | "method";
 
 export type ControllerClass<T = object> = abstract new (...args: any[]) => T;
 export type ControllerSource<T = object> = ControllerClass<T> | T;
@@ -52,8 +54,19 @@ export type ControllerSource<T = object> = ControllerClass<T> | T;
 export interface DecoratedRoute {
   controller: ControllerClass;
   controllerName: string;
-  handler: (...args: any[]) => unknown;
+  handler: OpenApiHandler;
   methodName: string | symbol;
+  route: OpenApiRoute;
+  static: boolean;
+}
+
+/**
+ * OpenAPI metadata registered by a decorated method or wrapped standalone function.
+ */
+export interface RegisteredOpenApiRoute {
+  handler: OpenApiHandler;
+  kind: OpenApiRegistrationKind;
+  name: string | symbol;
   route: OpenApiRoute;
   static: boolean;
 }

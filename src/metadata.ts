@@ -1,14 +1,33 @@
-import type { ControllerClass, ControllerSource, DecoratedRoute, OpenApiRoute } from "./types";
+import type {
+  ControllerClass,
+  ControllerSource,
+  DecoratedRoute,
+  OpenApiHandler,
+  OpenApiRegistrationKind,
+  OpenApiRoute,
+  RegisteredOpenApiRoute,
+} from "./types";
 
-type DecoratedMethod = (...args: any[]) => unknown;
+type DecoratedMethod = OpenApiHandler;
 
 interface DecoratedRouteRegistration {
+  kind: OpenApiRegistrationKind;
+  metadata?: object;
   methodName: string | symbol;
+  owner?: object;
   route: OpenApiRoute;
   static: boolean;
 }
 
-const decoratedRoutes = new WeakMap<DecoratedMethod, DecoratedRouteRegistration>();
+interface DecoratedRouteOrigin {
+  kind?: OpenApiRegistrationKind;
+  metadata?: object;
+  owner?: object;
+}
+
+const decoratedHandlers = new Map<DecoratedMethod, DecoratedRouteRegistration[]>();
+const decoratedMembers = new WeakMap<object, Map<string | symbol, DecoratedRouteRegistration>>();
+const decoratedMetadata = new WeakMap<object, Map<string | symbol, DecoratedRouteRegistration[]>>();
 
 function cloneRoute(route: OpenApiRoute): OpenApiRoute {
   return {
@@ -43,11 +62,59 @@ function resolveControllerName(controller: ControllerClass): string {
   return controller.name || "AnonymousController";
 }
 
+function getDecoratorMetadata(source: object): object | undefined {
+  const metadataSymbol = (Symbol as SymbolConstructor & { metadata?: symbol }).metadata;
+
+  if (!metadataSymbol) {
+    return undefined;
+  }
+
+  const metadata = (source as object & { [key: symbol]: unknown })[metadataSymbol];
+  return typeof metadata === "object" && metadata !== null ? metadata : undefined;
+}
+
+function getRegistration(
+  owner: object,
+  metadataSource: object,
+  propertyKey: string | symbol,
+  handler: DecoratedMethod,
+  isStatic: boolean,
+): DecoratedRouteRegistration | undefined {
+  const ownedRegistration = decoratedMembers.get(owner)?.get(propertyKey);
+
+  if (ownedRegistration?.static === isStatic) {
+    return ownedRegistration;
+  }
+
+  const metadata = getDecoratorMetadata(metadataSource);
+  const metadataRegistration = metadata
+    ? decoratedMetadata
+        .get(metadata)
+        ?.get(propertyKey)
+        ?.find((registration) => registration.static === isStatic)
+    : undefined;
+
+  if (metadataRegistration?.static === isStatic) {
+    return metadataRegistration;
+  }
+
+  return decoratedHandlers
+    .get(handler)
+    ?.find(
+      (registration) =>
+        !registration.metadata &&
+        !registration.owner &&
+        registration.kind === "method" &&
+        registration.methodName === propertyKey &&
+        registration.static === isStatic,
+    );
+}
+
 function collectRoutesFromPrototype(
   controller: ControllerClass,
   prototype: object | null,
   discoveredRoutes: DecoratedRoute[],
-  seenHandlers: Set<DecoratedMethod>,
+  seenMembers: Set<string | symbol>,
 ): void {
   for (
     let current = prototype;
@@ -59,18 +126,29 @@ function collectRoutesFromPrototype(
         continue;
       }
 
+      if (seenMembers.has(key)) {
+        continue;
+      }
+
+      seenMembers.add(key);
+
       const descriptor = Object.getOwnPropertyDescriptor(current, key);
       if (!descriptor || typeof descriptor.value !== "function") {
         continue;
       }
 
-      const registration = decoratedRoutes.get(descriptor.value);
+      const registration = getRegistration(
+        current,
+        current.constructor,
+        key,
+        descriptor.value,
+        false,
+      );
 
-      if (!registration || registration.static || seenHandlers.has(descriptor.value)) {
+      if (!registration) {
         continue;
       }
 
-      seenHandlers.add(descriptor.value);
       discoveredRoutes.push({
         controller,
         controllerName: resolveControllerName(controller),
@@ -86,7 +164,7 @@ function collectRoutesFromPrototype(
 function collectRoutesFromConstructor(
   controller: ControllerClass,
   discoveredRoutes: DecoratedRoute[],
-  seenHandlers: Set<DecoratedMethod>,
+  seenMembers: Set<string | symbol>,
 ): void {
   for (
     let current: unknown = controller;
@@ -98,18 +176,23 @@ function collectRoutesFromConstructor(
         continue;
       }
 
+      if (seenMembers.has(key)) {
+        continue;
+      }
+
+      seenMembers.add(key);
+
       const descriptor = Object.getOwnPropertyDescriptor(current, key);
       if (!descriptor || typeof descriptor.value !== "function") {
         continue;
       }
 
-      const registration = decoratedRoutes.get(descriptor.value);
+      const registration = getRegistration(current, current, key, descriptor.value, true);
 
-      if (!registration || !registration.static || seenHandlers.has(descriptor.value)) {
+      if (!registration) {
         continue;
       }
 
-      seenHandlers.add(descriptor.value);
       discoveredRoutes.push({
         controller,
         controllerName: resolveControllerName(controller),
@@ -127,16 +210,93 @@ export function registerDecoratedRoute(
   methodName: string | symbol,
   route: OpenApiRoute,
   isStatic = false,
+  origin: DecoratedRouteOrigin = {},
 ): void {
-  decoratedRoutes.set(handler, {
+  const registration = {
+    kind: origin.kind ?? "method",
+    metadata: origin.metadata,
     methodName,
+    owner: origin.owner,
     route: cloneRoute(route),
     static: isStatic,
-  });
+  };
+  const handlerRegistrations = decoratedHandlers.get(handler) ?? [];
+  const existingRegistrationIndex = handlerRegistrations.findIndex(
+    (candidate) =>
+      candidate.kind === registration.kind &&
+      candidate.metadata === origin.metadata &&
+      candidate.methodName === methodName &&
+      candidate.owner === origin.owner &&
+      candidate.static === isStatic,
+  );
+
+  if (existingRegistrationIndex === -1) {
+    handlerRegistrations.push(registration);
+  } else {
+    handlerRegistrations[existingRegistrationIndex] = registration;
+  }
+
+  decoratedHandlers.set(handler, handlerRegistrations);
+
+  if (origin.owner) {
+    const memberRegistrations = decoratedMembers.get(origin.owner) ?? new Map();
+    memberRegistrations.set(methodName, registration);
+    decoratedMembers.set(origin.owner, memberRegistrations);
+  }
+
+  if (origin.metadata) {
+    const metadataRegistrations =
+      decoratedMetadata.get(origin.metadata) ??
+      new Map<string | symbol, DecoratedRouteRegistration[]>();
+    const memberRegistrations = metadataRegistrations.get(methodName) ?? [];
+    const existingMemberIndex = memberRegistrations.findIndex(
+      (candidate) => candidate.static === isStatic,
+    );
+
+    if (existingMemberIndex === -1) {
+      memberRegistrations.push(registration);
+    } else {
+      memberRegistrations[existingMemberIndex] = registration;
+    }
+
+    metadataRegistrations.set(methodName, memberRegistrations);
+    decoratedMetadata.set(origin.metadata, metadataRegistrations);
+  }
 }
 
 export function hasOpenApiMetadata(handler: DecoratedMethod): boolean {
-  return decoratedRoutes.has(handler);
+  return decoratedHandlers.has(handler);
+}
+
+function toRegisteredOpenApiRoute(
+  handler: DecoratedMethod,
+  registration: DecoratedRouteRegistration,
+): RegisteredOpenApiRoute {
+  return {
+    handler,
+    kind: registration.kind,
+    name: registration.methodName,
+    route: cloneRoute(registration.route),
+    static: registration.static,
+  };
+}
+
+/**
+ * Returns every OpenAPI route attached to a specific handler.
+ */
+export function getHandlerOpenApiRoutes(handler: OpenApiHandler): RegisteredOpenApiRoute[] {
+  return (decoratedHandlers.get(handler) ?? []).map((registration) =>
+    toRegisteredOpenApiRoute(handler, registration),
+  );
+}
+
+/**
+ * Returns every route registered by imported decorators and wrapped functions.
+ */
+export function getRegisteredOpenApiRoutes(): RegisteredOpenApiRoute[] {
+  return [...decoratedHandlers].flatMap(([handler, registrations]) =>
+    registrations.map((registration) => toRegisteredOpenApiRoute(handler, registration)),
+  );
 }
 
 /**
@@ -145,15 +305,14 @@ export function hasOpenApiMetadata(handler: DecoratedMethod): boolean {
 export function getControllerOpenApiRoutes(source: ControllerSource): DecoratedRoute[] {
   const controller = resolveControllerClass(source);
   const discoveredRoutes: DecoratedRoute[] = [];
-  const seenHandlers = new Set<DecoratedMethod>();
 
   collectRoutesFromPrototype(
     controller,
     getControllerPrototype(source),
     discoveredRoutes,
-    seenHandlers,
+    new Set(),
   );
-  collectRoutesFromConstructor(controller, discoveredRoutes, seenHandlers);
+  collectRoutesFromConstructor(controller, discoveredRoutes, new Set());
 
   return discoveredRoutes;
 }

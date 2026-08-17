@@ -47,10 +47,10 @@ export function createRoute<const Route extends RouteWithPath<string>>(
   const createdRoute = {
     ...route,
     getOpenApiPath() {
-      return toOpenApiPath(route.path) as OpenApiPath<Route["path"]>;
+      return toOpenApiPath(this.path) as OpenApiPath<Route["path"]>;
     },
     getRoutingPath() {
-      return toRoutingPath(route.path) as RoutingPath<Route["path"]>;
+      return toRoutingPath(this.path) as RoutingPath<Route["path"]>;
     },
   };
 

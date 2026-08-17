@@ -1,5 +1,13 @@
 # @devscast/zod-openapi
 
+# 1.1.0 - Support for handlers and auto discovery
+
+- Added typed `openapi(route)(handler)` support for standalone functions, explicit `handlers`, and opt-in runtime discovery for imported decorated routes.
+- Fixed controller route discovery so overrides shadow inherited members and decorator metadata does not leak through handlers shared across controllers.
+- Added duplicate OpenAPI operation detection after path normalization and kept route path helpers synchronized with mutable route definitions.
+- Added migration guidance for adopting function routes and automatic discovery without changing existing controller behavior.
+- Migrated the Biome configuration for the updated toolchain and expanded regression coverage for discovery and registration behavior.
+
 # 1.0.0 - Initial Release
 
 - Added a decorator-first OpenAPI library built around `@openapi(...)` metadata on controller methods.

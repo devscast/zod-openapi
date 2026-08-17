@@ -1,6 +1,6 @@
 {
   "name": "@devscast/zod-openapi",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,22 +25,22 @@
   },
   "homepage": "https://github.com/devscast/zod-openapi#readme",
   "devDependencies": {
-    "@biomejs/biome": "^2.4.6",
-    "@changesets/cli": "^2.30.0",
-    "@commitlint/cli": "^20.4.3",
-    "@commitlint/config-conventional": "^20.4.3",
+    "@biomejs/biome": "^2.5.8",
+    "@changesets/cli": "^2.31.1",
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
     "@types/bun": "latest",
-    "@types/node": "^25.4.0",
-    "@typescript-eslint/eslint-plugin": "^8.57.0",
-    "@typescript-eslint/parser": "^8.57.0",
-    "@vitest/coverage-v8": "^4.0.18",
-    "commitizen": "^4.3.1",
+    "@types/node": "^25.9.5",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "commitizen": "^4.3.2",
     "cz-conventional-changelog": "^3.3.0",
     "husky": "^9.1.7",
     "typescript": "^5.9.3",
     "tsup": "^8.5.1",
-    "vitest": "^4.0.18",
-    "zod": "^4.3.6"
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3"
   },
   "scripts": {
     "build": "tsup --minify",
@@ -63,8 +63,8 @@
     "zod": "^4.0.0"
   },
   "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^8.4.3",
-    "openapi3-ts": "^4.5.0"
+    "@asteasolutions/zod-to-openapi": "^8.5.0",
+    "openapi3-ts": "^4.6.1"
   },
   "lint-staged": {
     "*.ts": [

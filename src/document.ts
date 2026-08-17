@@ -6,13 +6,19 @@ import {
 import { z } from "zod";
 
 import { toOpenApiPath } from "./create-route";
-import { collectOpenApiRoutes } from "./metadata";
+import {
+  collectOpenApiRoutes,
+  getHandlerOpenApiRoutes,
+  getRegisteredOpenApiRoutes,
+} from "./metadata";
 import type {
   ControllerSource,
   OpenAPI31Document,
   OpenAPIDocument,
   OpenAPIGeneratorOptions,
+  OpenApiHandler,
   OpenApiRoute,
+  RegisteredOpenApiRoute,
   RequestBodySchemaShorthand,
   RouteConfig,
 } from "./types";
@@ -26,12 +32,16 @@ const DEFAULT_SUCCESS_RESPONSE: RouteConfig["responses"] = {
 
 export type OpenApiDocumentConfig = Parameters<OpenApiGeneratorV3["generateDocument"]>[0];
 export type OpenApi31DocumentConfig = Parameters<OpenApiGeneratorV31["generateDocument"]>[0];
+export type OpenApiDiscoveryMode = "auto" | "explicit";
 
 /**
- * Sources used to assemble an OpenAPI registry from decorated controllers and manual routes.
+ * Sources used to assemble an OpenAPI registry from decorated controllers, wrapped handlers,
+ * automatically discovered registrations, and manual routes.
  */
 export interface CreateOpenApiRegistryOptions {
   controllers?: readonly ControllerSource[];
+  discovery?: OpenApiDiscoveryMode;
+  handlers?: readonly OpenApiHandler[];
   register?: (registry: OpenAPIRegistry) => void;
   routes?: readonly OpenApiRoute[];
 }
@@ -122,18 +132,95 @@ function normalizeRoute(route: OpenApiRoute): RouteConfig {
   };
 }
 
+function getOperationKey(route: RouteConfig): string {
+  return `${route.method.toUpperCase()} ${route.path}`;
+}
+
+function getRegisteredOperationKeys(registry: OpenAPIRegistry): Set<string> {
+  return new Set(
+    registry.definitions.flatMap((definition) =>
+      definition.type === "route"
+        ? [
+            getOperationKey({
+              ...definition.route,
+              path: toOpenApiPath(definition.route.path),
+            }),
+          ]
+        : [],
+    ),
+  );
+}
+
+function registerNormalizedRoute(
+  registry: OpenAPIRegistry,
+  route: OpenApiRoute,
+  registeredOperations: Set<string>,
+): void {
+  const normalizedRoute = normalizeRoute(route);
+  const operationKey = getOperationKey(normalizedRoute);
+
+  if (registeredOperations.has(operationKey)) {
+    throw new TypeError(`Duplicate OpenAPI operation: ${operationKey}`);
+  }
+
+  registeredOperations.add(operationKey);
+  registry.registerPath(normalizedRoute);
+}
+
+function registerDecoratedRoute(
+  registry: OpenAPIRegistry,
+  registration: Pick<RegisteredOpenApiRoute, "handler" | "route">,
+  registeredOperations: Set<string>,
+  registeredHandlers: Map<OpenApiHandler, Set<string>>,
+): void {
+  const normalizedRoute = normalizeRoute(registration.route);
+  const operationKey = getOperationKey(normalizedRoute);
+  const handlerOperations = registeredHandlers.get(registration.handler) ?? new Set();
+
+  if (handlerOperations.has(operationKey)) {
+    return;
+  }
+
+  registerNormalizedRoute(registry, registration.route, registeredOperations);
+  handlerOperations.add(operationKey);
+  registeredHandlers.set(registration.handler, handlerOperations);
+}
+
 function registerNormalizedRoutes(
   registry: OpenAPIRegistry,
   routes: readonly OpenApiRoute[],
   controllers: readonly ControllerSource[],
+  handlers: readonly OpenApiHandler[],
+  discovery: OpenApiDiscoveryMode,
   register?: (registry: OpenAPIRegistry) => void,
 ): OpenAPIRegistry {
+  const registeredOperations = getRegisteredOperationKeys(registry);
+  const registeredHandlers = new Map<OpenApiHandler, Set<string>>();
+
   for (const route of routes) {
-    registry.registerPath(normalizeRoute(route));
+    registerNormalizedRoute(registry, route, registeredOperations);
   }
 
   for (const discoveredRoute of collectOpenApiRoutes(controllers)) {
-    registry.registerPath(normalizeRoute(discoveredRoute.route));
+    registerDecoratedRoute(registry, discoveredRoute, registeredOperations, registeredHandlers);
+  }
+
+  for (const handler of handlers) {
+    const registrations = getHandlerOpenApiRoutes(handler);
+
+    if (registrations.length === 0) {
+      throw new TypeError(`Handler ${handler.name || "anonymous"} has no OpenAPI metadata.`);
+    }
+
+    for (const registration of registrations) {
+      registerDecoratedRoute(registry, registration, registeredOperations, registeredHandlers);
+    }
+  }
+
+  if (discovery === "auto") {
+    for (const registration of getRegisteredOpenApiRoutes()) {
+      registerDecoratedRoute(registry, registration, registeredOperations, registeredHandlers);
+    }
   }
 
   register?.(registry);
@@ -142,7 +229,7 @@ function registerNormalizedRoutes(
 }
 
 /**
- * Registers manual routes and decorator-discovered controller routes into an existing registry.
+ * Registers manual routes and explicitly or automatically discovered routes into an existing registry.
  */
 export function registerOpenApiRoutes(
   registry: OpenAPIRegistry,
@@ -152,19 +239,21 @@ export function registerOpenApiRoutes(
     registry,
     options.routes ?? [],
     options.controllers ?? [],
+    options.handlers ?? [],
+    options.discovery ?? "explicit",
     options.register,
   );
 }
 
 /**
- * Creates a fresh registry populated from decorated controllers, manual routes, and optional components.
+ * Creates a fresh registry populated from decorated sources, manual routes, and optional components.
  */
 export function createOpenApiRegistry(options: CreateOpenApiRegistryOptions = {}): OpenAPIRegistry {
   return registerOpenApiRoutes(new OpenAPIRegistry(), options);
 }
 
 /**
- * Generates an OpenAPI 3.0 document from decorated controllers and optional manual registry entries.
+ * Generates an OpenAPI 3.0 document from decorated sources and optional manual registry entries.
  */
 export function generateOpenApiDocument(options: GenerateOpenApiDocumentOptions): OpenAPIDocument {
   const registry = createOpenApiRegistry(options);
@@ -174,7 +263,7 @@ export function generateOpenApiDocument(options: GenerateOpenApiDocumentOptions)
 }
 
 /**
- * Generates an OpenAPI 3.1 document from decorated controllers and optional manual registry entries.
+ * Generates an OpenAPI 3.1 document from decorated sources and optional manual registry entries.
  */
 export function generateOpenApi31Document(
   options: GenerateOpenApi31DocumentOptions,
