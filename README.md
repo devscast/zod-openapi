@@ -1,11 +1,12 @@
-# Zod Open Api
-## Decorator-first OpenAPI generation for TypeScript classes and functions using Zod v4 schemas.
+# Zod OpenAPI
 
-![npm](https://img.shields.io/npm/v/@devscast/zod-openapi?style=flat-square)
-![npm](https://img.shields.io/npm/dt/@devscast/zod-openapi?style=flat-square)
-[![Lint](https://github.com/devscast/zod-openapi/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/devscast/zod-openapi/actions/workflows/lint.yml)
-[![Tests](https://github.com/devscast/zod-openapi/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/devscast/zod-openapi/actions/workflows/test.yml)
-![GitHub](https://img.shields.io/github/license/devscast/zod-openapi?style=flat-square)
+Decorator-first OpenAPI generation for TypeScript classes and functions using Zod v4 schemas.
+
+![npm](https://img.shields.io/npm/v/@ngandu-dev/zod-openapi?style=flat-square)
+![npm](https://img.shields.io/npm/dt/@ngandu-dev/zod-openapi?style=flat-square)
+[![Quality](https://github.com/ngandu-dev/zod-openapi/actions/workflows/quality.yml/badge.svg?branch=main)](https://github.com/ngandu-dev/zod-openapi/actions/workflows/quality.yml)
+[![Tests](https://github.com/ngandu-dev/zod-openapi/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/ngandu-dev/zod-openapi/actions/workflows/test.yml)
+![GitHub](https://img.shields.io/github/license/ngandu-dev/zod-openapi?style=flat-square)
 
 --- 
 
@@ -20,10 +21,15 @@ This package is designed for legacy or incremental migrations where documentatio
 - OpenAPI 3.0 and 3.1 document generation
 - Re-exports `z` with `.openapi(...)` already enabled
 
+## Requirements
+
+- Node.js 20.17 or newer
+- Zod 4
+
 ## Installation
 
 ```bash
-bun add @devscast/zod-openapi zod
+bun add @ngandu-dev/zod-openapi zod
 ```
 
 If your project uses legacy decorators, enable them in `tsconfig.json`:
@@ -42,7 +48,7 @@ Define a route in its application module. The wrapper attaches OpenAPI metadata 
 
 ```ts
 // src/routes/users.ts
-import { openapi, z } from "@devscast/zod-openapi";
+import { openapi, z } from "@ngandu-dev/zod-openapi";
 
 const UserParamsSchema = z.object({
   user_id: z.string().min(1),
@@ -94,7 +100,7 @@ Import the route module and generate the document with automatic discovery:
 // src/openapi.ts
 import "./routes/users";
 
-import { generateOpenApiDocument } from "@devscast/zod-openapi";
+import { generateOpenApiDocument } from "@ngandu-dev/zod-openapi";
 
 export const openApiDocument = generateOpenApiDocument({
   discovery: "auto",
@@ -119,7 +125,7 @@ Automatic discovery is runtime registration, not filesystem scanning. A route mo
 Use `handlers` when you want a document containing a controlled set of function routes. Explicit discovery is the default:
 
 ```ts
-import { generateOpenApiDocument } from "@devscast/zod-openapi";
+import { generateOpenApiDocument } from "@ngandu-dev/zod-openapi";
 
 import { updatePermissions } from "./routes/users";
 
@@ -142,7 +148,7 @@ const document = generateOpenApiDocument({
 Class controllers remain supported for legacy applications and incremental migrations:
 
 ```ts
-import { generateOpenApiDocument, openapi } from "@devscast/zod-openapi";
+import { generateOpenApiDocument, openapi } from "@ngandu-dev/zod-openapi";
 
 class HealthController {
   @openapi({
@@ -177,6 +183,13 @@ Controller classes, instances, inherited methods, and static methods are support
 
 ## Migration Notes
 
+### Migrating to `@ngandu-dev/zod-openapi`
+
+Replace the dependency and every import with `@ngandu-dev/zod-openapi`. Version 2 is a clean
+package move and does not provide an alias for the old scope.
+
+### Migrating route discovery
+
 Existing controller usage remains compatible and the default discovery mode is still `"explicit"`; applications using `controllers: [UsersController]` do not need to change.
 
 - Add standalone routes incrementally with `openapi(route)(handler)` and list them under `handlers`.
@@ -193,7 +206,7 @@ If you want to register extra components or mix manual routes with decorated one
 import {
   OpenApiGeneratorV3,
   createOpenApiRegistry,
-} from "@devscast/zod-openapi";
+} from "@ngandu-dev/zod-openapi";
 
 import "./routes/users";
 
@@ -237,7 +250,7 @@ Use `generateOpenApi31Document(...)` when you want a 3.1 document:
 ```ts
 import "./routes/users";
 
-import { generateOpenApi31Document } from "@devscast/zod-openapi";
+import { generateOpenApi31Document } from "@ngandu-dev/zod-openapi";
 
 const document = generateOpenApi31Document({
   discovery: "auto",
@@ -251,8 +264,30 @@ const document = generateOpenApi31Document({
 });
 ```
 
+## Development
+
+Install dependencies with `bun install`, then run `bun run quality` before opening a pull request.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete contribution workflow.
+
+## Testing
+
+Run `bun run test` for the test suite or `bun run test:coverage` for a coverage report.
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and follow our
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+Released under the [MIT License](LICENSE).
+
 ## Contributors
 
-<a href="https://github.com/devscast/zod-openapi/graphs/contributors" title="show all contributors">
-  <img src="https://contrib.rocks/image?repo=devscast/zod-openapi" alt="contributors"/>
+<a href="https://github.com/ngandu-dev/zod-openapi/graphs/contributors" title="Show all contributors">
+  <img src="https://contrib.rocks/image?repo=ngandu-dev/zod-openapi" alt="Contributors" />
 </a>

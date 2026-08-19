@@ -1,6 +1,20 @@
-# @devscast/zod-openapi
+# Changelog
 
-# 1.1.0 - Support for handlers and auto discovery
+All notable changes to `@ngandu-dev/zod-openapi` are documented in this file. This project follows
+[Semantic Versioning](https://semver.org/).
+
+## 2.0.0
+
+### Changed
+
+- Renamed the package to `@ngandu-dev/zod-openapi`.
+- Standardized package validation, project documentation, and maintenance tooling.
+
+### Removed
+
+- Removed support for the former package coordinate.
+
+## 1.1.0 - Support for handlers and auto discovery
 
 - Added typed `openapi(route)(handler)` support for standalone functions, explicit `handlers`, and opt-in runtime discovery for imported decorated routes.
 - Fixed controller route discovery so overrides shadow inherited members and decorator metadata does not leak through handlers shared across controllers.
@@ -8,7 +22,7 @@
 - Added migration guidance for adopting function routes and automatic discovery without changing existing controller behavior.
 - Migrated the Biome configuration for the updated toolchain and expanded regression coverage for discovery and registration behavior.
 
-# 1.0.0 - Initial Release
+## 1.0.0 - Initial Release
 
 - Added a decorator-first OpenAPI library built around `@openapi(...)` metadata on controller methods.
 - Added controller discovery, route normalization, registry/document generators, and route path helpers for OpenAPI and Express-style paths.

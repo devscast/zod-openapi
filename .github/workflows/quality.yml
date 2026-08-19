@@ -1,32 +1,32 @@
-name: Release
+name: Quality
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main, master]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
-  release:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-          registry-url: https://registry.npmjs.org
           package-manager-cache: false
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - run: npm install --global npm@latest
       - run: bun install --frozen-lockfile
-      - run: bun run quality
-      - run: npm publish --access public
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run build
+      - run: bun run check:package

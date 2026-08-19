@@ -1,4 +1,4 @@
-# @devscast/zod-openapi
+# @ngandu-dev/zod-openapi
 
 ## Validation
 
