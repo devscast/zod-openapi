@@ -3,6 +3,12 @@
 All notable changes to `@ngandu-dev/zod-openapi` are documented in this file. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 2.0.1
+
+### Patch Changes
+
+- Remove Commitlint and its transitive dependencies, configuration, and commit-message hook while preserving pre-commit validation. Refresh compatible dependencies and the Bun lockfile.
+
 ## 2.0.0
 
 ### Changed
